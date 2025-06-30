@@ -5,6 +5,22 @@ type Entity interface {
 	Pattern | Context | Session
 }
 
+type EntityType string
+
+const (
+	EntityTypeContext EntityType = "context"
+	EntityTypePattern EntityType = "pattern"
+	EntityTypeSession EntityType = "session"
+)
+
+type StreamResponseType string
+
+const (
+	StreamResponseTypeComplete StreamResponseType = "complete"
+	StreamResponseTypeContent  StreamResponseType = "content"
+	StreamResponseTypeError    StreamResponseType = "error"
+)
+
 // AvailableModels contains a list of available model names and their vendors.
 type AvailableModels struct {
 	Models  []string            `json:"models"`  // Models is a list of model names.

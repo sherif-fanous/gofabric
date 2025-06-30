@@ -16,9 +16,6 @@ import (
 const (
 	apiKeyHeaderName         = "X-API-Key"
 	defaultHTTPClientTimeout = 60 * time.Second
-	entityTypeContext        = "context"
-	entityTypePattern        = "pattern"
-	entityTypeSession        = "session"
 )
 
 // Client represents a client for the Fabric API server.
@@ -122,11 +119,11 @@ func (c *Client) doRequest(
 func createEntity(
 	client *Client,
 	ctx context.Context,
-	entityType string,
+	entityType EntityType,
 	entityName string,
 	body io.Reader,
 ) error {
-	resp, err := client.doRequest(ctx, http.MethodPost, "/"+entityType+"s/"+entityName, body)
+	resp, err := client.doRequest(ctx, http.MethodPost, "/"+string(entityType)+"s/"+entityName, body)
 	if err != nil {
 		return fmt.Errorf("failed to create %s `%s`: %w", entityType, entityName, err)
 	}
@@ -135,8 +132,8 @@ func createEntity(
 	return nil
 }
 
-func deleteEntity(client *Client, ctx context.Context, entityType string, entityName string) error {
-	resp, err := client.doRequest(ctx, http.MethodDelete, "/"+entityType+"s/"+entityName, nil)
+func deleteEntity(client *Client, ctx context.Context, entityType EntityType, entityName string) error {
+	resp, err := client.doRequest(ctx, http.MethodDelete, "/"+string(entityType)+"s/"+entityName, nil)
 	if err != nil {
 		return fmt.Errorf("failed to delete %s `%s`: %w", entityType, entityName, err)
 	}
@@ -148,10 +145,10 @@ func deleteEntity(client *Client, ctx context.Context, entityType string, entity
 func entityExists(
 	client *Client,
 	ctx context.Context,
-	entityType string,
+	entityType EntityType,
 	entityName string,
 ) (bool, error) {
-	resp, err := client.doRequest(ctx, http.MethodGet, "/"+entityType+"s/exists/"+entityName, nil)
+	resp, err := client.doRequest(ctx, http.MethodGet, "/"+string(entityType)+"s/exists/"+entityName, nil)
 	if err != nil {
 		return false, fmt.Errorf(
 			"failed to check if %s `%s` exists: %w",
@@ -178,10 +175,10 @@ func entityExists(
 func getEntity[T Entity](
 	client *Client,
 	ctx context.Context,
-	entityType string,
+	entityType EntityType,
 	entityName string,
 ) (*T, error) {
-	resp, err := client.doRequest(ctx, http.MethodGet, "/"+entityType+"s/"+entityName, nil)
+	resp, err := client.doRequest(ctx, http.MethodGet, "/"+string(entityType)+"s/"+entityName, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get %s `%s`: %w", entityType, entityName, err)
 	}
@@ -213,14 +210,14 @@ func listEntity(client *Client, ctx context.Context, entityType string) ([]strin
 func renameEntity(
 	client *Client,
 	ctx context.Context,
-	entityType string,
+	entityType EntityType,
 	oldEntityName string,
 	newEntityName string,
 ) error {
 	resp, err := client.doRequest(
 		ctx,
 		http.MethodPut,
-		"/"+entityType+"s/rename/"+oldEntityName+"/"+newEntityName,
+		"/"+string(entityType)+"s/rename/"+oldEntityName+"/"+newEntityName,
 		nil,
 	)
 	if err != nil {
@@ -259,7 +256,7 @@ func (c *Client) Chat(ctx context.Context, chatRequest *ChatRequest) (<-chan Str
 		for event, err := range sse.Read(resp.Body, nil) {
 			if err != nil {
 				streamResponseChannel <- StreamResponse{
-					Type:    "error",
+					Type:    string(StreamResponseTypeError),
 					Format:  "plain",
 					Content: fmt.Errorf("failed to read SSE response: %w", err).Error(),
 				}
@@ -270,7 +267,7 @@ func (c *Client) Chat(ctx context.Context, chatRequest *ChatRequest) (<-chan Str
 			var streamResponse StreamResponse
 			if err := json.Unmarshal([]byte(event.Data), &streamResponse); err != nil {
 				streamResponseChannel <- StreamResponse{
-					Type:    "error",
+					Type:    string(StreamResponseTypeError),
 					Format:  "plain",
 					Content: fmt.Errorf("failed to parse SSE response: %w", err).Error(),
 				}
@@ -280,7 +277,7 @@ func (c *Client) Chat(ctx context.Context, chatRequest *ChatRequest) (<-chan Str
 
 			streamResponseChannel <- streamResponse
 
-			if streamResponse.Type == "complete" {
+			if streamResponse.Type == string(StreamResponseTypeComplete) {
 				return // Exit the goroutine when the response is complete
 			}
 		}
@@ -291,32 +288,32 @@ func (c *Client) Chat(ctx context.Context, chatRequest *ChatRequest) (<-chan Str
 
 // CreateContext creates a new context.
 func (c *Client) CreateContext(ctx context.Context, name string, body io.Reader) error {
-	return createEntity(c, ctx, entityTypeContext, name, body)
+	return createEntity(c, ctx, EntityTypeContext, name, body)
 }
 
 // CreatePattern creates a new pattern.
 func (c *Client) CreatePattern(ctx context.Context, name string, body io.Reader) error {
-	return createEntity(c, ctx, entityTypePattern, name, body)
+	return createEntity(c, ctx, EntityTypePattern, name, body)
 }
 
 // CreateSession creates a new session.
 func (c *Client) CreateSession(ctx context.Context, name string, body io.Reader) error {
-	return createEntity(c, ctx, entityTypeSession, name, body)
+	return createEntity(c, ctx, EntityTypeSession, name, body)
 }
 
 // DeleteContext deletes a context.
 func (c *Client) DeleteContext(ctx context.Context, name string) error {
-	return deleteEntity(c, ctx, entityTypeContext, name)
+	return deleteEntity(c, ctx, EntityTypeContext, name)
 }
 
 // DeletePattern deletes a pattern.
 func (c *Client) DeletePattern(ctx context.Context, name string) error {
-	return deleteEntity(c, ctx, entityTypePattern, name)
+	return deleteEntity(c, ctx, EntityTypePattern, name)
 }
 
 // DeleteSession deletes a session.
 func (c *Client) DeleteSession(ctx context.Context, name string) error {
-	return deleteEntity(c, ctx, entityTypeSession, name)
+	return deleteEntity(c, ctx, EntityTypeSession, name)
 }
 
 // GetConfig retrieves the configuration of fabric.
@@ -337,17 +334,17 @@ func (c *Client) GetConfig(ctx context.Context) (*Config, error) {
 
 // GetContextMetadata retrieves the metadata of a context.
 func (c *Client) GetContextMetadata(ctx context.Context, name string) (*Context, error) {
-	return getEntity[Context](c, ctx, entityTypeContext, name)
+	return getEntity[Context](c, ctx, EntityTypeContext, name)
 }
 
 // GetPatternMetadata retrieves the metadata of a pattern.
 func (c *Client) GetPatternMetadata(ctx context.Context, name string) (*Pattern, error) {
-	return getEntity[Pattern](c, ctx, entityTypePattern, name)
+	return getEntity[Pattern](c, ctx, EntityTypePattern, name)
 }
 
 // GetSessionMetadata retrieves the metadata of a session.
 func (c *Client) GetSessionMetadata(ctx context.Context, name string) (*Session, error) {
-	return getEntity[Session](c, ctx, entityTypeSession, name)
+	return getEntity[Session](c, ctx, EntityTypeSession, name)
 }
 
 // ListContexts retrieves the list of contexts.
@@ -399,32 +396,32 @@ func (c *Client) ListStrategies(ctx context.Context) ([]Strategy, error) {
 
 // ContextExists checks if a context exists.
 func (c *Client) ContextExists(ctx context.Context, name string) (bool, error) {
-	return entityExists(c, ctx, entityTypeContext, name)
+	return entityExists(c, ctx, EntityTypeContext, name)
 }
 
 // PatternExists checks if a pattern exists.
 func (c *Client) PatternExists(ctx context.Context, name string) (bool, error) {
-	return entityExists(c, ctx, entityTypePattern, name)
+	return entityExists(c, ctx, EntityTypePattern, name)
 }
 
 // SessionExists checks if a session exists.
 func (c *Client) SessionExists(ctx context.Context, name string) (bool, error) {
-	return entityExists(c, ctx, entityTypeSession, name)
+	return entityExists(c, ctx, EntityTypeSession, name)
 }
 
 // RenameContext renames a context.
 func (c *Client) RenameContext(ctx context.Context, oldName string, newName string) error {
-	return renameEntity(c, ctx, entityTypeContext, oldName, newName)
+	return renameEntity(c, ctx, EntityTypeContext, oldName, newName)
 }
 
 // RenamePattern renames a pattern.
 func (c *Client) RenamePattern(ctx context.Context, oldName string, newName string) error {
-	return renameEntity(c, ctx, entityTypePattern, oldName, newName)
+	return renameEntity(c, ctx, EntityTypePattern, oldName, newName)
 }
 
 // RenameSession renames a session.
 func (c *Client) RenameSession(ctx context.Context, oldName string, newName string) error {
-	return renameEntity(c, ctx, entityTypeSession, oldName, newName)
+	return renameEntity(c, ctx, EntityTypeSession, oldName, newName)
 }
 
 // UpdateConfig updates the configuration of fabric.

@@ -40,11 +40,11 @@ func main() {
 
 	for response := range responses {
 		switch response.Type {
-		case "content":
+		case string(gofabric.StreamResponseTypeContent):
 			log.Printf("Content (%s): %s\n", response.Format, response.Content)
-		case "error":
+		case string(gofabric.StreamResponseTypeError):
 			log.Printf("Error: %s\n", response.Content)
-		case "complete":
+		case string(gofabric.StreamResponseTypeComplete):
 			log.Printf("Chat completed")
 		}
 	}
