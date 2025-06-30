@@ -248,39 +248,41 @@ func (c *Client) Chat(ctx context.Context, chatRequest *ChatRequest) (<-chan Str
 
 	streamResponseChannel := make(chan StreamResponse)
 
-	// Start goroutine to read Server-sent events
 	go func() {
 		defer func() { _ = resp.Body.Close() }()
 		defer close(streamResponseChannel)
 
-		for event, err := range sse.Read(resp.Body, nil) {
-			if err != nil {
-				streamResponseChannel <- StreamResponse{
-					Type:    string(StreamResponseTypeError),
-					Format:  "plain",
-					Content: fmt.Errorf("failed to read SSE response: %w", err).Error(),
-				}
+		iterator := sse.Read(resp.Body, nil)
 
-				break // Exit the goroutine on reading error
-			}
-
+		iterator(func(event sse.Event, err error) bool {
 			var streamResponse StreamResponse
-			if err := json.Unmarshal([]byte(event.Data), &streamResponse); err != nil {
-				streamResponseChannel <- StreamResponse{
+
+			if err != nil {
+				err = fmt.Errorf("failed to read SSE response: %w", err)
+			} else {
+				err = json.Unmarshal([]byte(event.Data), &streamResponse)
+				if err != nil {
+					err = fmt.Errorf("failed to parse SSE response: %w", err)
+				}
+			}
+
+			if err != nil {
+				streamResponse = StreamResponse{
 					Type:    string(StreamResponseTypeError),
 					Format:  "plain",
-					Content: fmt.Errorf("failed to parse SSE response: %w", err).Error(),
+					Content: err.Error(),
 				}
-
-				return // Exit the goroutine on parsing error
 			}
 
-			streamResponseChannel <- streamResponse
-
-			if streamResponse.Type == string(StreamResponseTypeComplete) {
-				return // Exit the goroutine when the response is complete
+			select {
+			case streamResponseChannel <- streamResponse:
+				// Stop iterating if an error has occurred OR if the server
+				// has sent the "complete" message.
+				return err == nil && streamResponse.Type != string(StreamResponseTypeComplete)
+			case <-ctx.Done():
+				return false
 			}
-		}
+		})
 	}()
 
 	return streamResponseChannel, nil
